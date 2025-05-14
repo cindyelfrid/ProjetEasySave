@@ -1,0 +1,12 @@
+[
+  {
+    "Name": "BackupDocuments",
+    "SourceDirectory": "D:\\Documents",
+    "TargetDirectory": "E:\\Backup",
+    "Type": 0,
+    "FileSize": 1704592,
+    "FileTransferTime": 58.002,
+    "Status": 1,
+    "LastAction": "14/05/2025 13:30:00"
+  }
+]
