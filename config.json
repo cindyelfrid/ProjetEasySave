@@ -1,0 +1,4 @@
+{
+  "LogDirectory": ".\\Data\\Logs\\",
+  "StateFile": ".\\Data\\state.json"
+}

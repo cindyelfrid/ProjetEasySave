@@ -9,7 +9,7 @@ namespace ProjetEasySave
     public class BackupManager
     {
         public List<BackupJob> Jobs { get; set; } = new List<BackupJob>();
-        private readonly string configPath = @"C:\ProgramData\ProSoft\EasySave\Config\jobs.json";
+        private readonly string configPath = "jobs.json"; // Peut aussi être paramétré
 
         public void LoadJobs()
         {
@@ -22,9 +22,6 @@ namespace ProjetEasySave
 
         public void SaveJobs()
         {
-            var dir = Path.GetDirectoryName(configPath);
-            if (!string.IsNullOrEmpty(dir))
-                Directory.CreateDirectory(dir);
             File.WriteAllText(configPath, JsonSerializer.Serialize(Jobs, new JsonSerializerOptions { WriteIndented = true }));
         }
 
@@ -32,14 +29,13 @@ namespace ProjetEasySave
         {
             if (Jobs.Count == 0)
             {
-                Console.WriteLine("Aucun travail de sauvegarde.");
+                Console.WriteLine(Program.Msg["NoJobs"]);
                 return;
             }
             for (int i = 0; i < Jobs.Count; i++)
             {
-                string typeStr = Jobs[i].Type == 0 ? "Complète" : "Différentielle";
-                string statusStr = Jobs[i].Status == 0 ? "Active" : "Terminée";
-                Console.WriteLine($"{i + 1}. {Jobs[i].Name} [{typeStr}] {Jobs[i].SourceDirectory} -> {Jobs[i].TargetDirectory} | Statut: {statusStr}");
+                string typeStr = Jobs[i].Type == 0 ? Program.Msg["FullType"] : Program.Msg["DiffType"];
+                Console.WriteLine($"{i + 1}. {Jobs[i].Name} [{typeStr}] {Jobs[i].SourceDirectory} -> {Jobs[i].TargetDirectory}");
             }
         }
 
@@ -47,33 +43,33 @@ namespace ProjetEasySave
         {
             if (Jobs.Count >= 5)
             {
-                Console.WriteLine("Nombre maximum de travaux atteint.");
+                Console.WriteLine(Program.Msg["MaxJobs"]);
                 return;
             }
-            Console.Write("Nom du travail : ");
+            Console.Write(Program.Msg["AddJob"]);
             string? name = Console.ReadLine();
-            Console.Write("Répertoire source : ");
+            Console.Write(Program.Msg["SourceDir"]);
             string? src = Console.ReadLine();
-            Console.Write("Répertoire cible : ");
+            Console.Write(Program.Msg["TargetDir"]);
             string? tgt = Console.ReadLine();
-            Console.Write("Type (1=Complète, 2=Différentielle) : ");
+            Console.Write(Program.Msg["TypePrompt"]);
             string? typeInput = Console.ReadLine();
 
             if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt) || string.IsNullOrWhiteSpace(typeInput))
             {
-                Console.WriteLine("Erreur : toutes les informations sont obligatoires.");
+                Console.WriteLine(Program.Msg["AllFieldsRequired"]);
                 return;
             }
 
             if (!int.TryParse(typeInput, out int t) || (t != 1 && t != 2))
             {
-                Console.WriteLine("Type invalide.");
+                Console.WriteLine(Program.Msg["TypeInvalid"]);
                 return;
             }
-            int type = t == 2 ? 1 : 0; // 0 = Complète, 1 = Différentielle
+            int type = t == 2 ? 1 : 0; // 0 = Complète/Full, 1 = Différentielle/Differential
             Jobs.Add(new BackupJob(name, src, tgt, type));
             SaveJobs();
-            Console.WriteLine("Travail ajouté.");
+            Console.WriteLine(Program.Msg["JobAdded"]);
         }
 
         public void ExecuteJobs(List<int> selection, Logger logger, StateManager stateManager)
@@ -83,35 +79,30 @@ namespace ProjetEasySave
                 if (idx < 0 || idx >= Jobs.Count) continue;
                 var job = Jobs[idx];
 
-                // Vérification de l'existence du dossier source
                 if (!Directory.Exists(job.SourceDirectory))
                 {
-                    Console.WriteLine($"Le dossier source '{job.SourceDirectory}' n'existe pas. Sauvegarde ignorée.");
+                    Console.WriteLine(string.Format(Program.Msg["SourceMissing"], job.SourceDirectory));
                     continue;
                 }
-
-                // Vérification de l'existence du dossier cible
                 if (!Directory.Exists(job.TargetDirectory))
                 {
-                    Console.WriteLine($"Le dossier cible '{job.TargetDirectory}' n'existe pas. Sauvegarde ignorée.");
+                    Console.WriteLine(string.Format(Program.Msg["TargetMissing"], job.TargetDirectory));
                     continue;
                 }
 
-                job.Status = 0; // Active
                 var files = Directory.GetFiles(job.SourceDirectory, "*", SearchOption.AllDirectories);
-                job.FileSize = files.Sum(f => new FileInfo(f).Length);
-                job.FileTransferTime = 0;
-                job.LastAction = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+                int totalFiles = files.Length;
+                long totalSize = files.Sum(f => new FileInfo(f).Length);
 
-                foreach (var file in files)
+                for (int i = 0; i < files.Length; i++)
                 {
-                    string? relPath = Path.GetRelativePath(job.SourceDirectory, file);
+                    string file = files[i];
+                    string relPath = Path.GetRelativePath(job.SourceDirectory, file);
                     string destFile = Path.Combine(job.TargetDirectory, relPath);
                     string? destDir = Path.GetDirectoryName(destFile);
                     if (!string.IsNullOrEmpty(destDir))
                         Directory.CreateDirectory(destDir);
 
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
                         // Différentiel : ne copie que si modifié ou absent
@@ -123,39 +114,52 @@ namespace ProjetEasySave
                                 continue;
                         }
                         File.Copy(file, destFile, true);
-                        sw.Stop();
-                        double fileTransferTime = sw.ElapsedMilliseconds;
-                        job.FileTransferTime += fileTransferTime;
-                        job.LastAction = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
-                        logger.WriteLogEntry(new LogEntry
-                        {
-                            Name = job.Name,
-                            FileSource = file,
-                            FileTarget = destFile,
-                            FileSize = new FileInfo(file).Length,
-                            FileTransferTime = fileTransferTime,
-                            Time = job.LastAction
-                        });
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Erreur lors de la copie de '{file}' : {ex.Message}");
-                        logger.WriteLogEntry(new LogEntry
-                        {
-                            Name = job.Name,
-                            FileSource = file,
-                            FileTarget = destFile,
-                            FileSize = new FileInfo(file).Length,
-                            FileTransferTime = -1,
-                            Time = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")
-                        });
+                        Console.WriteLine(string.Format(Program.Msg["CopyError"], file, ex.Message));
                     }
-                    stateManager.UpdateState(job, files.Length, job.FileSize, 0, 0, file, destFile);
+
+                    // Mise à jour de l'état temps réel
+                    int filesLeft = totalFiles - (i + 1);
+                    int progression = totalFiles > 0 ? (int)(((double)(i + 1) / totalFiles) * 100) : 0;
+                    stateManager.UpdateState(new JobState
+                    {
+                        Name = job.Name,
+                        SourceFilePath = file,
+                        TargetFilePath = destFile,
+                        State = "ACTIVE",
+                        TotalFilesToCopy = totalFiles,
+                        TotalFilesSize = totalSize,
+                        NbFilesLeftToDo = filesLeft,
+                        Progression = progression
+                    });
+
+                    // Log (optionnel)
+                    logger.WriteLogEntry(new
+                    {
+                        Name = job.Name,
+                        FileSource = file,
+                        FileTarget = destFile,
+                        FileSize = new FileInfo(file).Length,
+                        Time = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")
+                    });
                 }
-                job.Status = 1; // Completed
-                job.LastAction = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
-                SaveJobs();
+
+                // Quand le job est terminé
+                stateManager.UpdateState(new JobState
+                {
+                    Name = job.Name,
+                    SourceFilePath = "",
+                    TargetFilePath = "",
+                    State = "END",
+                    TotalFilesToCopy = 0,
+                    TotalFilesSize = 0,
+                    NbFilesLeftToDo = 0,
+                    Progression = 100
+                });
             }
+            Console.WriteLine(Program.Msg["BackupCompleted"]);
         }
     }
 }

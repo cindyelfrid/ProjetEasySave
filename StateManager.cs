@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -13,11 +12,11 @@ namespace ProjetEasySave
         public StateManager(string stateFile)
         {
             this.stateFile = stateFile;
+            var dir = Path.GetDirectoryName(stateFile);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
         }
 
-        /// <summary>
-        /// Met à jour ou ajoute l'état d'un travail dans le fichier state.json.
-        /// </summary>
         public void UpdateState(JobState jobState)
         {
             List<JobState> states = new List<JobState>();
@@ -28,22 +27,17 @@ namespace ProjetEasySave
                     var json = File.ReadAllText(stateFile);
                     states = JsonSerializer.Deserialize<List<JobState>>(json) ?? new List<JobState>();
                 }
-                catch { /* Fichier corrompu ou vide, on repart à zéro */ }
+                catch { }
             }
 
-            // Remplace ou ajoute l'état du job
             var existing = states.FirstOrDefault(s => s.Name == jobState.Name);
             if (existing != null)
-            {
-                int idx = states.IndexOf(existing);
-                states[idx] = jobState;
-            }
+                states[states.IndexOf(existing)] = jobState;
             else
-            {
                 states.Add(jobState);
-            }
 
-            File.WriteAllText(stateFile, JsonSerializer.Serialize(states, new JsonSerializerOptions { WriteIndented = true }));
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(stateFile, JsonSerializer.Serialize(states, options));
         }
     }
 }

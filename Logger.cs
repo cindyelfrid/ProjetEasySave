@@ -15,11 +15,11 @@ namespace ProjetEasySave
                 Directory.CreateDirectory(logDirectory);
         }
 
-        public void WriteLogEntry(LogEntry entry)
+        public void WriteLogEntry(object entry)
         {
+            var options = new JsonSerializerOptions { WriteIndented = true };
             string logFile = Path.Combine(logDirectory, $"{DateTime.Now:yyyy-MM-dd}.json");
-            string json = JsonSerializer.Serialize(entry);
-            File.AppendAllText(logFile, json + Environment.NewLine);
+            File.AppendAllText(logFile, JsonSerializer.Serialize(entry, options) + Environment.NewLine);
         }
     }
 }

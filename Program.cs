@@ -1,33 +1,57 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
 
 namespace ProjetEasySave
 {
     class Program
     {
         static BackupManager backupManager = new BackupManager();
-        static Logger logger = new Logger(@"C:\ProgramData\ProSoft\EasySave\Logs\");
-        static StateManager stateManager = new StateManager(@"C:\ProgramData\ProSoft\EasySave\state.json");
+        public static Dictionary<string, string> Msg = Messages.Fr; // Par défaut français
 
         static void Main(string[] args)
         {
-            Console.OutputEncoding = System.Text.Encoding.UTF8;
-            Console.WriteLine("=== EasySave v1.0 ===");
+            // Multilingue
+            Console.WriteLine("Choisissez la langue / Choose language :");
+            Console.WriteLine("1. Français");
+            Console.WriteLine("2. English");
+            Console.Write("Votre choix / Your choice: ");
+            string? lang = Console.ReadLine();
+            if (lang == "2")
+                Msg = Messages.En;
+
+            Console.WriteLine(Msg["Title"]);
+
+            // Lecture config
+            AppConfig config;
+            try
+            {
+                config = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText("config.json")) ?? new AppConfig();
+            }
+            catch
+            {
+                config = new AppConfig();
+            }
+
+            var logger = new Logger(config.LogDirectory);
+            var stateManager = new StateManager(config.StateFile);
 
             backupManager.LoadJobs();
 
+            // Exécution directe par ligne de commande
             if (args.Length > 0)
             {
                 var selection = ParseSelection(args[0], backupManager.Jobs.Count);
                 backupManager.ExecuteJobs(selection, logger, stateManager);
-                Console.WriteLine("Sauvegarde(s) terminée(s).");
                 return;
             }
 
             while (true)
             {
-                Console.WriteLine("\n1. Ajouter un travail\n2. Lister les travaux\n3. Exécuter la sauvegarde\n0. Quitter");
-                Console.Write("Votre choix : ");
+                Console.WriteLine(Msg["Menu"]);
+                Console.Write(Msg["Choice"]);
                 string? choix = Console.ReadLine();
 
                 if (choix == "1")
@@ -36,20 +60,25 @@ namespace ProjetEasySave
                     backupManager.ListJobs();
                 else if (choix == "3")
                 {
-                    Console.Write("Entrez les indices (ex : 1-3 ou 1;3) : ");
+                    Console.Write(Msg["EnterIndices"]);
                     string? input = Console.ReadLine();
                     if (string.IsNullOrWhiteSpace(input))
                     {
-                        Console.WriteLine("Aucune sélection saisie.");
+                        Console.WriteLine(Msg["NoSelection"]);
                         continue;
                     }
                     var selection = ParseSelection(input, backupManager.Jobs.Count);
                     backupManager.ExecuteJobs(selection, logger, stateManager);
                 }
+                else if (choix == "4")
+                {
+                    var allIndices = Enumerable.Range(0, backupManager.Jobs.Count).ToList();
+                    backupManager.ExecuteJobs(allIndices, logger, stateManager);
+                }
                 else if (choix == "0")
                     break;
                 else
-                    Console.WriteLine("Choix invalide.");
+                    Console.WriteLine(Msg["InvalidChoice"]);
             }
         }
 
